@@ -2,6 +2,7 @@ import unittest
 
 from dualsense.bluetooth_haptics import (
     BluetoothHapticsReportBuilder,
+    HapticsPCMGenerator,
     PCM_BYTES,
     REPORT_ID,
     REPORT_SIZE,
@@ -63,6 +64,24 @@ class BluetoothHapticsReportTests(unittest.TestCase):
         report = bytearray(self.builder.build_haptics_report(self.pcm))
         report[20] ^= 0x01
         self.assertFalse(validate_bluetooth_crc(bytes(report)))
+
+
+class HapticsPCMGeneratorTests(unittest.TestCase):
+    def test_render_packet_size_and_range(self):
+        generator = HapticsPCMGenerator(seed=1234)
+        pcm = generator.render(0.4, 0.2, 0.3, 0.1, 90.0, 0.15)
+        self.assertEqual(len(pcm), PCM_BYTES)
+        self.assertTrue(all(0 <= byte <= 255 for byte in pcm))
+
+    def test_silence_is_zero(self):
+        generator = HapticsPCMGenerator(seed=1234)
+        pcm = generator.render(0, 0, 0, 0, 0, 0)
+        self.assertEqual(pcm, bytes(PCM_BYTES))
+
+    def test_non_finite_input_rejected(self):
+        generator = HapticsPCMGenerator()
+        with self.assertRaises(ValueError):
+            generator.render(float("nan"), 0, 0, 0, 0, 0)
 
 
 if __name__ == "__main__":
