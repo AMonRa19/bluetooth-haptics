@@ -128,7 +128,9 @@ class Parser:
         jerk_mag = math.sqrt(jerk_x**2 + jerk_z**2)
         if jerk_mag > 3.0:
             # Impact! Intensity scales with how hard we hit. 3.0 is a scrape, 30.0 is a wall.
-            intensity = min(2.0, (jerk_mag - 3.0) / 27.0) * self.surface.collision_haptics_volume
+            intensity = min(2.0, (jerk_mag - 3.0) / 27.0) * max(
+                0.0, min(1.0, self.surface.collision_haptics_volume)
+            )
             
             # Directional impact mapping based on current acceleration direction
             if pkt.acceleration_x > 5.0: # Pushed right -> Hit came from Left
@@ -143,7 +145,11 @@ class Parser:
                 
         # Legacy Collisions (Smashables like fences)
         if time.monotonic() < self._collision_until:
-            bump = (self.surface.collision_amp / 255.0) * self._collision_intensity
+            bump = (
+                (self.surface.collision_amp / 255.0)
+                * self._collision_intensity
+                * max(0.0, min(1.0, self.surface.collision_haptics_volume))
+            )
             l_low += bump * self._collision_l_factor
             r_low += bump * self._collision_r_factor
             
@@ -217,9 +223,25 @@ class Parser:
         throttle_ratio = pkt.accel / 255.0
         engine_vol = (0.08 + (throttle_ratio * 0.25) + (rpm_ratio * 0.1)) * self.surface.engine_haptics_volume
         
-        m = self.surface.haptic_intensity
-        def _c(val): return max(0.0, min(1.0, val * m))
-        return _c(l_low), _c(l_high), _c(r_low), _c(r_high), engine_freq, _c(engine_vol)
+        # Motor strength is the master gain. Vibration intensity separately
+        # controls road/surface, slip, impact, suspension, ABS and shift effects.
+        motor_gain = max(0.0, min(1.0, self.surface.haptic_intensity))
+        vibration_gain = max(0.0, min(1.0, self.surface.vibration_intensity))
+
+        def _vibration(value):
+            return max(0.0, min(1.0, value * motor_gain * vibration_gain))
+
+        def _engine(value):
+            return max(0.0, min(1.0, value * motor_gain))
+
+        return (
+            _vibration(l_low),
+            _vibration(l_high),
+            _vibration(r_low),
+            _vibration(r_high),
+            engine_freq,
+            _engine(engine_vol),
+        )
 
     def _tachometer_color(self, pkt: DataPacket) -> tuple[int, int, int]:
         if not self.tachometer.enable:
