@@ -384,8 +384,10 @@ class SurfaceSettingsPage(QScrollArea):
         self._chk_body_haptics = QCheckBox()
         self._chk_body_haptics.setChecked(settings.enable_body_haptics)
         self._chk_body_haptics.toggled.connect(self._on_body_haptics_toggled)
-        enable_form.addRow("Enable Body Haptics (Left/Right Motors)", self._chk_body_haptics)
-        enable_form.addRow("", QLabel("USB connection only - not supported over Bluetooth."))
+        enable_form.addRow("Enable Body Haptics (L/R motors)", self._chk_body_haptics)
+        enable_form.addRow("", QLabel(
+            "Uses native USB audio or Bluetooth HID haptics. Bluetooth response is still being tested."
+        ))
 
         self._chk_steam_rumble = QCheckBox()
         self._chk_steam_rumble.setChecked(settings.allow_steam_rumble)
@@ -393,8 +395,10 @@ class SurfaceSettingsPage(QScrollArea):
         self._steam_rumble_row = enable_form.rowCount()
         enable_form.addRow("Allow Steam rumble (L/R motors)", self._chk_steam_rumble)
         self._steam_rumble_desc_row = enable_form.rowCount()
-        enable_form.addRow("", QLabel("Steam Input also sends rumble through these motors.\n"
-                                      "Disable to suppress it. (Disabled automatically if Body Haptics is on)"))
+        enable_form.addRow("", QLabel(
+            "Steam Input stays enabled. Body Haptics selects the controller's audio-haptics lane, "
+            "so regular Steam motor rumble may be replaced while Body Haptics is active."
+        ))
         
         self._update_steam_rumble_ui()
 
@@ -416,26 +420,34 @@ class SurfaceSettingsPage(QScrollArea):
             root.addWidget(group)
 
         # Body Haptics Tuning
-        haptics_group = QGroupBox("Body Haptics Tuning")
+        haptics_group = QGroupBox("Motor & Vibration Tuning")
         haptics_form = QFormLayout(haptics_group)
         haptics_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
         haptics_form.setHorizontalSpacing(16)
         haptics_form.setVerticalSpacing(6)
+        haptics_form.addRow("", QLabel(
+            "These controls affect body-motor output only; L2/R2 trigger strength stays unchanged."
+        ))
         
-        spin_haptic = SettingsPage._make_spin(settings.haptic_intensity, 0.0, 5.0)
+        spin_haptic = SettingsPage._make_spin(settings.haptic_intensity, 0.0, 1.0)
         spin_haptic.editingFinished.connect(partial(self._on_changed, "haptic_intensity", spin_haptic))
         self._spins["haptic_intensity"] = spin_haptic
-        haptics_form.addRow("Haptic Intensity", spin_haptic)
+        haptics_form.addRow("Motor Strength (0-100%)", spin_haptic)
+
+        spin_vibration = SettingsPage._make_spin(settings.vibration_intensity, 0.0, 1.0)
+        spin_vibration.editingFinished.connect(partial(self._on_changed, "vibration_intensity", spin_vibration))
+        self._spins["vibration_intensity"] = spin_vibration
+        haptics_form.addRow("Vibration Intensity (0-100%)", spin_vibration)
         
-        spin_engine = SettingsPage._make_spin(settings.engine_haptics_volume, 0.0, 5.0)
+        spin_engine = SettingsPage._make_spin(settings.engine_haptics_volume, 0.0, 1.0)
         spin_engine.editingFinished.connect(partial(self._on_changed, "engine_haptics_volume", spin_engine))
         self._spins["engine_haptics_volume"] = spin_engine
-        haptics_form.addRow("Engine Volume", spin_engine)
+        haptics_form.addRow("Engine Vibration (0-100%)", spin_engine)
         
-        spin_col = SettingsPage._make_spin(settings.collision_haptics_volume, 0.0, 5.0)
+        spin_col = SettingsPage._make_spin(settings.collision_haptics_volume, 0.0, 1.0)
         spin_col.editingFinished.connect(partial(self._on_changed, "collision_haptics_volume", spin_col))
         self._spins["collision_haptics_volume"] = spin_col
-        haptics_form.addRow("Collision Volume", spin_col)
+        haptics_form.addRow("Collision Strength (0-100%)", spin_col)
         
         root.addWidget(haptics_group)
 
@@ -456,7 +468,7 @@ class SurfaceSettingsPage(QScrollArea):
         self._spins["slip_threshold"] = spin_slip_t
         slip_form.addRow("Slip Threshold", spin_slip_t)
 
-        spin_slip_i = SettingsPage._make_spin(settings.slip_intensity, 0.0, 5.0)
+        spin_slip_i = SettingsPage._make_spin(settings.slip_intensity, 0.0, 1.0)
         spin_slip_i.editingFinished.connect(partial(self._on_changed, "slip_intensity", spin_slip_i))
         self._spins["slip_intensity"] = spin_slip_i
         slip_form.addRow("Slip Intensity", spin_slip_i)
