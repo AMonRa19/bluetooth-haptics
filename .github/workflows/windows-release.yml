@@ -61,7 +61,7 @@ jobs:
             $version = python -c "from version import __version__; print(__version__)"
             $tag = "v$version"
           }
-          if ($tag -notmatch '^v\d+\.\d+\.\d+
+          if ($tag -notmatch '^v\d+\.\d+\.\d+$') {
             throw "Unexpected release tag '$tag'. Expected vMAJOR.MINOR.PATCH."
           }
           "tag=$tag" >> $env:GITHUB_OUTPUT
@@ -100,52 +100,7 @@ jobs:
 
             - Includes the standalone executable and portable ZIP.
             - Steam Input is not disabled by this build.
-            - Real-controller Bluetooth haptics validation is still pending; please treat this as a test preview.
-          prerelease: true
-          make_latest: false
-          files: |
-            dist/HorizonHaptics-Bluetooth.exe
-            HorizonHaptics-Bluetooth-${{ steps.release.outputs.tag }}-win64.zip
-          fail_on_unmatched_files: true
-) {
-            throw "Unexpected release tag '$tag'. Expected vMAJOR.MINOR.PATCH."
-          }
-          "tag=$tag" >> $env:GITHUB_OUTPUT
-
-      - name: Build standalone Windows executable
-        shell: pwsh
-        run: |
-          python -m PyInstaller --noconfirm --clean --onefile --windowed --name HorizonHaptics-Bluetooth --collect-all sounddevice --collect-all _sounddevice_data --hidden-import hid main.py
-          if (-not (Test-Path "dist/HorizonHaptics-Bluetooth.exe")) {
-            throw "PyInstaller did not produce the expected executable."
-          }
-
-      - name: Prepare portable release ZIP
-        shell: pwsh
-        env:
-          RELEASE_TAG: ${{ steps.release.outputs.tag }}
-        run: |
-          New-Item -ItemType Directory -Force -Path "release-package" | Out-Null
-          Copy-Item "dist/HorizonHaptics-Bluetooth.exe" "release-package/"
-          Copy-Item "README.md" "release-package/"
-          Copy-Item "LICENSE" "release-package/"
-          $zipName = "HorizonHaptics-Bluetooth-$env:RELEASE_TAG-win64.zip"
-          Compress-Archive -Path "release-package/*" -DestinationPath $zipName -CompressionLevel Optimal
-          if (-not (Test-Path $zipName)) {
-            throw "Portable release ZIP was not created."
-          }
-
-      - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.release.outputs.tag }}
-          target_commitish: ${{ github.sha }}
-          name: HorizonHaptics Bluetooth ${{ steps.release.outputs.tag }}
-          body: |
-            Windows x64 preview build of HorizonHaptics with native DualSense Bluetooth PCM haptics.
-
-            - Includes the standalone executable and portable ZIP.
-            - Steam Input is not disabled by this build.
+            - Includes separate body-motor strength and vibration intensity controls.
             - Real-controller Bluetooth haptics validation is still pending; please treat this as a test preview.
           prerelease: true
           make_latest: false
