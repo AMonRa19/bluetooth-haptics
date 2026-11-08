@@ -5,13 +5,13 @@ on:
     branches:
       - bluetooth-haptics
     tags:
-      - "v*-bt*"
+      - "v*"
   workflow_dispatch:
     inputs:
       release_tag:
-        description: "Release tag (for example v1.3.1-bt.1)"
+        description: "Release tag (for example v1.0.0)"
         required: false
-        default: "v1.3.1-bt.1"
+        default: "v1.0.0"
         type: string
 
 permissions:
@@ -62,7 +62,7 @@ jobs:
             $tag = "v$version"
           }
           if ($tag -notmatch '^v\d+\.\d+\.\d+-bt\.\d+$') {
-            throw "Unexpected release tag '$tag'. Expected vMAJOR.MINOR.PATCH-bt.NUMBER."
+            throw "Unexpected release tag '$tag'. Expected vMAJOR.MINOR.PATCH."
           }
           "tag=$tag" >> $env:GITHUB_OUTPUT
 
