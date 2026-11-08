@@ -128,3 +128,69 @@ class BluetoothHapticsReportBuilder:
         self.sequence = (self.sequence + 1) & 0x0F
         self.packet_counter = (self.packet_counter + 1) & 0xFF
         return result
+
+
+class HapticsPCMGenerator:
+    """Generate the project's six-channel haptics mix as 3 kHz signed-8 PCM.
+
+    Input amplitudes use the same normalized 0..1 scale as AudioHaptics.
+    The generator keeps oscillator phase between packets to avoid clicks.
+    """
+
+    def __init__(self, sample_rate: int = PCM_RATE, seed: int | None = None):
+        import math
+        import random
+
+        if sample_rate != PCM_RATE:
+            raise ValueError(f"DualSense Bluetooth haptics expects {PCM_RATE} Hz")
+        self.sample_rate = sample_rate
+        self._math = math
+        self._rng = random.Random(seed)
+        self._phase_low = 0.0
+        self._phase_high = 0.0
+        self._phase_engine = 0.0
+
+    def reset(self) -> None:
+        self._phase_low = 0.0
+        self._phase_high = 0.0
+        self._phase_engine = 0.0
+
+    def render(
+        self,
+        l_low: float,
+        l_high: float,
+        r_low: float,
+        r_high: float,
+        engine_freq: float,
+        engine_vol: float,
+    ) -> bytes:
+        """Render one 32-frame stereo packet (10.67 ms at 3 kHz)."""
+        values = (l_low, l_high, r_low, r_high, engine_freq, engine_vol)
+        if not all(self._math.isfinite(float(v)) for v in values):
+            raise ValueError("Haptics parameters must be finite numbers")
+
+        left = []
+        right = []
+        tau = 2.0 * self._math.pi
+        low_step = 65.0 / self.sample_rate
+        high_step = 200.0 / self.sample_rate
+        engine_step = max(0.0, float(engine_freq)) / self.sample_rate
+
+        for _ in range(PCM_FRAMES):
+            low = self._math.sin(tau * self._phase_low)
+            tone = self._math.sin(tau * self._phase_high)
+            noise = self._rng.uniform(-1.0, 1.0)
+            high = noise * 0.7 + tone * 0.3
+
+            # Sawtooth engine texture, matching the USB audio renderer.
+            engine = 2.0 * (self._phase_engine - self._math.floor(self._phase_engine + 0.5))
+            engine *= float(engine_vol)
+
+            left.append(max(-1.0, min(1.0, low * float(l_low) + high * float(l_high) + engine)))
+            right.append(max(-1.0, min(1.0, low * float(r_low) + high * float(r_high) + engine)))
+
+            self._phase_low = (self._phase_low + low_step) % 1.0
+            self._phase_high = (self._phase_high + high_step) % 1.0
+            self._phase_engine = (self._phase_engine + engine_step) % 1.0
+
+        return interleave_stereo_pcm(left, right)
