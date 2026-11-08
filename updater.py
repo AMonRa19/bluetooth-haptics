@@ -25,9 +25,15 @@ _LOCAL_APPDATA = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "
 _STAGING = _LOCAL_APPDATA / "HorizonHaptics" / "update"
 
 
-def _parse_version(tag: str) -> tuple[int, ...]:
-    """Extract numeric components, including the numeric Bluetooth prerelease."""
-    return tuple(int(part) for part in re.findall(r"\d+", tag))
+_RELEASE_TAG_PATTERN = re.compile(r"^v(\\d+)\\.(\\d+)\\.(\\d+)$")
+
+
+def _parse_release_version(tag: str) -> tuple[int, int, int] | None:
+    """Parse only public vMAJOR.MINOR.PATCH tags; ignore development tags."""
+    match = _RELEASE_TAG_PATTERN.fullmatch(tag)
+    if not match:
+        return None
+    return tuple(int(part) for part in match.groups())
 
 
 def check_for_update() -> tuple[str, str] | None:
@@ -37,7 +43,10 @@ def check_for_update() -> tuple[str, str] | None:
 
     from version import __version__
 
-    current_version = _parse_version(__version__)
+    current_version = _parse_release_version(f"v{__version__}")
+    if current_version is None:
+        log.warning("Invalid application version %r; update checks disabled.", __version__)
+        return None
     try:
         req = urllib.request.Request(
             _API_URL,
@@ -49,8 +58,8 @@ def check_for_update() -> tuple[str, str] | None:
         candidates = []
         for release in releases if isinstance(releases, list) else []:
             tag = release.get("tag_name", "")
-            parsed = _parse_version(tag)
-            if not tag or parsed <= current_version:
+            parsed = _parse_release_version(tag)
+            if parsed is None or parsed <= current_version:
                 continue
             for asset in release.get("assets", []):
                 name = asset.get("name", "")
