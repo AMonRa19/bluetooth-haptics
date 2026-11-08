@@ -14,7 +14,7 @@ from pathlib import Path
 log = logging.getLogger("hh.updater")
 
 _REPO = "AMonRa19/bluetooth-haptics"
-_API_URL = f"https://api.github.com/repos/{_REPO}/releases/latest"
+_API_URL = f"https://api.github.com/repos/{_REPO}/releases?per_page=20"
 _LOCAL_APP = getattr(sys, "frozen", False)
 _APP_DIR = (
     Path(sys.executable).resolve().parent
@@ -37,22 +37,30 @@ def check_for_update() -> tuple[str, str] | None:
 
     from version import __version__
 
+    current_version = _parse_version(__version__)
     try:
         req = urllib.request.Request(
             _API_URL,
             headers={"User-Agent": "HorizonHaptics-Bluetooth"},
         )
         with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read())
+            releases = json.loads(resp.read())
 
-        tag = data.get("tag_name", "")
-        if not tag or _parse_version(tag) <= _parse_version(__version__):
-            return None
+        candidates = []
+        for release in releases if isinstance(releases, list) else []:
+            tag = release.get("tag_name", "")
+            parsed = _parse_version(tag)
+            if not tag or parsed <= current_version:
+                continue
+            for asset in release.get("assets", []):
+                name = asset.get("name", "")
+                if name.endswith("-win64.zip"):
+                    candidates.append((parsed, tag, asset["browser_download_url"]))
+                    break
 
-        for asset in data.get("assets", []):
-            name = asset.get("name", "")
-            if name.endswith("-win64.zip"):
-                return tag, asset["browser_download_url"]
+        if candidates:
+            _, tag, url = max(candidates, key=lambda item: item[0])
+            return tag, url
     except Exception as exc:
         log.debug("Update check failed: %s", exc)
 
