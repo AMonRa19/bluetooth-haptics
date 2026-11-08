@@ -25,7 +25,7 @@ _LOCAL_APPDATA = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "
 _STAGING = _LOCAL_APPDATA / "HorizonHaptics" / "update"
 
 
-_RELEASE_TAG_PATTERN = re.compile(r"^v(\\d+)\\.(\\d+)\\.(\\d+)$")
+_RELEASE_TAG_PATTERN = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
 
 
 def _parse_release_version(tag: str) -> tuple[int, int, int] | None:
