@@ -17,7 +17,7 @@ class SurfaceSettings:
 
     # Steam Input sends rumble to the left/right vibration motors independently
     # of trigger effects. When True, motor bytes are not written so Steam keeps
-    # control. When False, motors are zeroed every frame, suppressing Steam rumble.
+    # control. When False, the native body-haptics output lane is selected.
     allow_steam_rumble: bool = True
 
     # Collision jolt (SmashableVelDiff spike)
@@ -27,11 +27,13 @@ class SurfaceSettings:
     collision_amp: int = 255
     collision_duration_ms: float = 150.0
 
+    # Body-haptics gains are normalized (0.0 = off, 1.0 = full scale).
     enable_body_haptics: bool = False
-    haptic_intensity: float = 1.0
-    engine_haptics_volume: float = 1.0
-    collision_haptics_volume: float = 1.0
+    haptic_intensity: float = 0.65  # overall left/right motor strength
+    vibration_intensity: float = 0.45  # road, slip, impact, suspension and shift vibration
+    engine_haptics_volume: float = 0.55
+    collision_haptics_volume: float = 0.50
 
     enable_slip_haptics: bool = True
     slip_threshold: float = 0.8
-    slip_intensity: float = 1.0
+    slip_intensity: float = 0.50
