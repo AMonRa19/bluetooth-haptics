@@ -41,7 +41,7 @@ repository's **Releases** section.
 
 The workflow can be started manually from Actions or by pushing a commit to
 `bluetooth-haptics` with `[build-exe]` in its commit message. The current
-preview version is `1.3.1-bt.2`. The packaged updater checks this repository
+preview version is `1.0.0`. The packaged updater checks this repository
 and installs future `*-win64.zip` releases.
 
 ## Tests
@@ -61,7 +61,7 @@ hardware revision accepts the stream identically.
 
 ## Upstream and protocol attribution
 
-The base application is HorizonHaptics v1.3.1 by Haritha Rathnayake.
+The application is published as HorizonHaptics Bluetooth v1.0.0 and is based on HorizonHaptics v1.3.1 by Haritha Rathnayake.
 The Bluetooth audio-haptics report layout is implemented from the
 DualSenseClient Bluetooth output-report reference. Preserve the upstream
 MIT license when incorporating upstream source files.
