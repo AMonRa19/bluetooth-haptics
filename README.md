@@ -23,8 +23,14 @@ writes are serialized on the same device handle.
 
 `worker.py` forwards the Forza parser's six body-haptics values to that
 stream. Bluetooth uses the native HID PCM lane; the existing USB
-`AudioHaptics` path remains in place. Steam Input is not disabled by this
-integration.
+`AudioHaptics` path remains in place. Steam Input itself is not disabled.
+
+The **Motor & Vibration Tuning** section provides separate controls for
+overall left/right motor strength and the vibration layer. Engine, collision,
+and tire-slip levels can also be adjusted independently. The lower starting
+gains are 65% overall motor strength, 45% vibration, 55% engine, 50% collision,
+and 50% tire-slip intensity. These controls affect body haptics only; L2/R2
+adaptive trigger strength is unchanged.
 
 ## Windows preview release
 
@@ -34,8 +40,8 @@ a portable ZIP, and publishes both files as assets of a prerelease in the
 repository's **Releases** section.
 
 The workflow can be started manually from Actions or by pushing a commit to
-`bluetooth-haptics` with `[build-exe]` in its commit message. The initial
-preview version is `1.3.1-bt.1`. The packaged updater checks this repository
+`bluetooth-haptics` with `[build-exe]` in its commit message. The current
+preview version is `1.3.1-bt.2`. The packaged updater checks this repository
 and installs future `*-win64.zip` releases.
 
 ## Tests
@@ -48,7 +54,8 @@ python -m unittest discover -s tests -v
 ```
 
 Automated tests cover report layout/CRC, init-prime, PCM rendering, stream
-cadence, disabling/silence, and session reset. **Real-controller Bluetooth
+cadence, disabling/silence, session reset, and independent motor/vibration
+gain behavior. **Real-controller Bluetooth
 validation is still pending**; no claim is made yet that every DualSense
 hardware revision accepts the stream identically.
 
