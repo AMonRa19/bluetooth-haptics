@@ -94,7 +94,11 @@ class Worker:
             while self._state.running:
                 with self._state.lock:
                     if self._ds.connected:
-                        self._ds.allow_steam_rumble = self._state.surface.allow_steam_rumble and not self._state.surface.enable_body_haptics
+                        allow_steam = self._state.surface.allow_steam_rumble and not self._state.surface.enable_body_haptics
+                        if self._ds.allow_steam_rumble != allow_steam:
+                            self._ds.allow_steam_rumble = allow_steam
+                            if prev is not None:
+                                self._ds.set(*prev[:8])
                         self._state.ds_connected = True
                     else:
                         self._state.ds_connected = False
