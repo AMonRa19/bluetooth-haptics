@@ -69,7 +69,7 @@ jobs:
       - name: Build standalone Windows executable
         shell: pwsh
         run: |
-          python -m PyInstaller --noconfirm --clean --onefile --windowed --name HorizonHaptics-Bluetooth --collect-all PySide6 --collect-all shiboken6 --collect-all numpy --collect-all sounddevice --collect-all _sounddevice_data --hidden-import hid main.py
+          python -m PyInstaller --noconfirm --clean --onefile --windowed --name HorizonHaptics-Bluetooth --collect-all sounddevice --collect-all _sounddevice_data --hidden-import hid main.py
           if (-not (Test-Path "dist/HorizonHaptics-Bluetooth.exe")) {
             throw "PyInstaller did not produce the expected executable."
           }
@@ -88,16 +88,6 @@ jobs:
           if (-not (Test-Path $zipName)) {
             throw "Portable release ZIP was not created."
           }
-
-      - name: Upload build artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: HorizonHaptics-Bluetooth-${{ steps.release.outputs.tag }}-win64
-          path: |
-            dist/HorizonHaptics-Bluetooth.exe
-            HorizonHaptics-Bluetooth-${{ steps.release.outputs.tag }}-win64.zip
-          if-no-files-found: error
-          retention-days: 14
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
