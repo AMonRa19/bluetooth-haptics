@@ -21,6 +21,7 @@ else:
     import hid
 
 from .triggers import off, rigid
+from .bluetooth_stream import BluetoothHapticsStream
 
 log = logging.getLogger("hh.dualsense")
 
@@ -90,6 +91,7 @@ class DualSense:
         self._connected = False
         self._open_warned = False
         self.allow_steam_rumble = True
+        self._bt_haptics = BluetoothHapticsStream(self._write_bt_report, self._get_bt_state_report)
 
     @property
     def connected(self):
@@ -115,6 +117,27 @@ class DualSense:
             self._pending_motors = (motor_l, motor_r)
             self._pending_player_leds = player_leds
             self._dirty = True
+
+    def set_haptics(self, l_low, l_high, r_low, r_high, engine_freq, engine_vol, *, enabled=True):
+        """Queue body-haptics values for the Bluetooth PCM writer."""
+        self._bt_haptics.update(
+            l_low, l_high, r_low, r_high, engine_freq, engine_vol, enabled=enabled
+        )
+
+    def _write_bt_report(self, report):
+        if self._dev is None:
+            raise OSError("DualSense HID device is not connected")
+        self._dev.write(report)
+
+    def _get_bt_state_report(self):
+        """Return the 47-byte state payload used by the Bluetooth init-prime."""
+        with self._lock:
+            left, right = self._pending
+            lb_r, lb_g, lb_b = self._pending_lb
+            motor_l, motor_r = self._pending_motors
+            player_leds = self._pending_player_leds
+        output = self._build(left, right, lb_r, lb_g, lb_b, motor_l, motor_r, player_leds)
+        return output[2:49]
 
     def _connect(self):
         info = _find_controller()
@@ -148,12 +171,14 @@ class DualSense:
         self._dev = dev
         self._layout = _BT if _detect_bluetooth(info) else _USB
         self._connected = True
+        self._bt_haptics.reset()
         self._open_warned = False
         log.info("%s connected (%s)", name, "Bluetooth" if self._layout["bt"] else "USB")
         self._startup_pulse()
         return True
 
     def _release(self):
+        self._bt_haptics.reset()
         if self._dev:
             try:
                 self._dev.write(self._build(off(), off(), 0, 0, 0, 0, 0, 0))
@@ -201,15 +226,19 @@ class DualSense:
                 except OSError:
                     pass
                 with self._lock:
-                    if not self._dirty:
-                        time.sleep(0.001)
-                        continue
-                    left, right = self._pending
-                    lb_r, lb_g, lb_b = self._pending_lb
-                    motor_l, motor_r = self._pending_motors
-                    player_leds = self._pending_player_leds
-                    self._dirty = False
-                self._dev.write(self._build(left, right, lb_r, lb_g, lb_b, motor_l, motor_r, player_leds))
+                    dirty = self._dirty
+                    if dirty:
+                        left, right = self._pending
+                        lb_r, lb_g, lb_b = self._pending_lb
+                        motor_l, motor_r = self._pending_motors
+                        player_leds = self._pending_player_leds
+                        self._dirty = False
+                if dirty:
+                    self._dev.write(self._build(left, right, lb_r, lb_g, lb_b, motor_l, motor_r, player_leds))
+                if self._layout["bt"]:
+                    self._bt_haptics.tick()
+                if not dirty:
+                    time.sleep(0.001)
             except Exception as exc:
                 log.warning("HID write failed (%s) - reconnecting", exc)
                 self._release()

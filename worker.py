@@ -73,6 +73,7 @@ class Worker:
 
     def stop(self):
         self._state.running = False
+        self._ds.set_haptics(0, 0, 0, 0, 0, 0, enabled=False)
         self._ds.set(_OFF, _OFF, 0, 0, 0, 0, 0, 0)
         self._ds.close()
         self._audio.stop()
@@ -105,6 +106,7 @@ class Worker:
                         with self._state.lock:
                             self._state.receiving = False
                     if prev != OFF_PAIR:
+                        self._ds.set_haptics(0, 0, 0, 0, 0, 0, enabled=False)
                         self._ds.set(*OFF_PAIR[:8])
                         self._audio.set_haptics(*OFF_PAIR[8:])
                         prev = OFF_PAIR
@@ -124,6 +126,7 @@ class Worker:
                 data_out = self._parser.compute(pkt)
                 if data_out != prev:
                     self._ds.set(*data_out[:8])
+                    self._ds.set_haptics(*data_out[8:], enabled=self._state.surface.enable_body_haptics and pkt.is_race_on)
                     self._audio.set_haptics(*data_out[8:])
                     prev = data_out
 
