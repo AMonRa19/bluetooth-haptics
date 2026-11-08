@@ -124,9 +124,12 @@ class Worker:
                     continue
 
                 data_out = self._parser.compute(pkt)
+                self._ds.set_haptics(
+                    *data_out[8:],
+                    enabled=self._state.surface.enable_body_haptics and pkt.is_race_on,
+                )
                 if data_out != prev:
                     self._ds.set(*data_out[:8])
-                    self._ds.set_haptics(*data_out[8:], enabled=self._state.surface.enable_body_haptics and pkt.is_race_on)
                     self._audio.set_haptics(*data_out[8:])
                     prev = data_out
 
