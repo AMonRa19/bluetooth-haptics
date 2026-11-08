@@ -3,11 +3,19 @@
 import dataclasses
 import json
 import logging
+import math
 from pathlib import Path
 
 from Config import BrakeSettings, GearSettings, SurfaceSettings, ThrottleSettings, TachometerSettings, TriggerMode
 
 log = logging.getLogger("hh.prefs")
+_HAPTIC_GAIN_KEYS = {
+    "haptic_intensity",
+    "vibration_intensity",
+    "engine_haptics_volume",
+    "collision_haptics_volume",
+    "slip_intensity",
+}
 PREFS_FILE = Path.home() / ".config" / "horizonhaptics" / "settings.json"
 
 
@@ -84,7 +92,10 @@ def _apply(obj, d: dict, cls) -> None:
             elif isinstance(default, bool):
                 setattr(obj, key, bool(val))
             elif isinstance(default, float):
-                setattr(obj, key, float(val))
+                parsed = float(val)
+                if key in _HAPTIC_GAIN_KEYS:
+                    parsed = max(0.0, min(1.0, parsed)) if math.isfinite(parsed) else default
+                setattr(obj, key, parsed)
             elif isinstance(default, int):
                 setattr(obj, key, int(val))
             else:
