@@ -1,8 +1,9 @@
-"""Auto-update: check GitHub releases, download zip, patch in place, restart. v1.2.2"""
+"""Check GitHub Releases and apply Windows portable-EXE updates."""
 
 import json
 import logging
-import shutil
+import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -12,84 +13,71 @@ from pathlib import Path
 
 log = logging.getLogger("hh.updater")
 
-_REPO = "haritha99ch/HorizonHaptics"
+_REPO = "AMonRa19/bluetooth-haptics"
 _API_URL = f"https://api.github.com/repos/{_REPO}/releases/latest"
-_STAGING = Path.home() / ".config" / "horizonhaptics" / "update"
-_APP_DIR = Path(__file__).parent.resolve()
-
-# Helper script written to a temp file and launched detached after the app exits.
-# It waits, extracts the zip over the app directory (skipping .venv), then relaunches.
-_HELPER = '''\
-import shutil, subprocess, sys, time, zipfile
-from pathlib import Path
-
-zip_path, app_dir, launcher = Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[3]
-
-time.sleep(3)
-
-with zipfile.ZipFile(zip_path) as zf:
-    for member in zf.namelist():
-        rel = Path(member)
-        if not rel.parts or str(rel).startswith(".venv"):
-            continue
-        dest = app_dir / rel
-        if member.endswith("/"):
-            dest.mkdir(parents=True, exist_ok=True)
-        else:
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            with zf.open(member) as src, open(dest, "wb") as dst:
-                shutil.copyfileobj(src, dst)
-
-Path(zip_path).unlink(missing_ok=True)
-
-if sys.platform == "win32":
-    subprocess.Popen([launcher], shell=True, cwd=str(app_dir),
-                     creationflags=subprocess.CREATE_NEW_CONSOLE)
-else:
-    subprocess.Popen([launcher], cwd=str(app_dir))
-
-Path(__file__).unlink(missing_ok=True)
-'''
+_LOCAL_APP = getattr(sys, "frozen", False)
+_APP_DIR = (
+    Path(sys.executable).resolve().parent
+    if _LOCAL_APP
+    else Path(__file__).parent.resolve()
+)
+_LOCAL_APPDATA = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
+_STAGING = _LOCAL_APPDATA / "HorizonHaptics" / "update"
 
 
-def _parse_version(tag: str) -> tuple:
-    return tuple(int(x) for x in tag.lstrip("v").split(".") if x.isdigit())
+def _parse_version(tag: str) -> tuple[int, ...]:
+    """Extract numeric components, including the numeric Bluetooth prerelease."""
+    return tuple(int(part) for part in re.findall(r"\d+", tag))
 
 
 def check_for_update() -> tuple[str, str] | None:
-    """Return (tag, download_url) if a newer release exists, else None."""
+    """Return the newest Windows portable package when a newer release exists."""
+    if sys.platform != "win32" or not _LOCAL_APP:
+        return None
+
     from version import __version__
+
     try:
-        req = urllib.request.Request(_API_URL, headers={"User-Agent": "HorizonHaptics"})
+        req = urllib.request.Request(
+            _API_URL,
+            headers={"User-Agent": "HorizonHaptics-Bluetooth"},
+        )
         with urllib.request.urlopen(req, timeout=10) as resp:
             data = json.loads(resp.read())
+
         tag = data.get("tag_name", "")
         if not tag or _parse_version(tag) <= _parse_version(__version__):
             return None
+
         for asset in data.get("assets", []):
-            if asset.get("name", "").endswith(".zip"):
+            name = asset.get("name", "")
+            if name.endswith("-win64.zip"):
                 return tag, asset["browser_download_url"]
     except Exception as exc:
         log.debug("Update check failed: %s", exc)
+
     return None
 
 
 def download_update(url: str, tag: str, progress_cb=None) -> Path | None:
-    """Download zip to staging dir. progress_cb(pct: float) called during transfer."""
+    """Download the portable Windows update package."""
     try:
         _STAGING.mkdir(parents=True, exist_ok=True)
-        dest = _STAGING / f"HorizonHaptics-{tag}.zip"
-        req = urllib.request.Request(url, headers={"User-Agent": "HorizonHaptics"})
+        dest = _STAGING / f"HorizonHaptics-{tag}-win64.zip"
+        req = urllib.request.Request(
+            url,
+            headers={"User-Agent": "HorizonHaptics-Bluetooth"},
+        )
         with urllib.request.urlopen(req, timeout=120) as resp:
             total = int(resp.headers.get("Content-Length", 0) or 0)
             downloaded = 0
             with open(dest, "wb") as fh:
                 while True:
-                    buf = resp.read(65536)
-                    if not buf:
+                    chunk = resp.read(65536)
+                    if not chunk:
                         break
-                    fh.write(buf)
-                    downloaded += len(buf)
+                    fh.write(chunk)
+                    downloaded += len(chunk)
                     if progress_cb and total:
                         progress_cb(downloaded / total * 100)
         return dest
@@ -98,30 +86,88 @@ def download_update(url: str, tag: str, progress_cb=None) -> Path | None:
         return None
 
 
-def apply_and_restart(zip_path: Path) -> None:
-    """Write helper script, launch it detached. Caller must quit the app after this."""
+def _ps_quote(value: str | Path) -> str:
+    """Quote a path as a PowerShell single-quoted string."""
+    return "'" + str(value).replace("'", "''") + "'"
+
+
+def _apply_frozen_windows_update(zip_path: Path) -> None:
+    """Replace the running one-file EXE after the current process exits."""
+    app_exe = Path(sys.executable).resolve()
     helper = tempfile.NamedTemporaryFile(
-        mode="w", suffix=".py", delete=False, prefix="hh_update_"
+        mode="w",
+        suffix=".ps1",
+        delete=False,
+        prefix="hh_update_",
+        encoding="utf-8",
     )
-    helper.write(_HELPER)
+    helper.write(
+        "$ErrorActionPreference = 'Stop'\n"
+        f"$ZipPath = {_ps_quote(zip_path)}\n"
+        f"$AppExe = {_ps_quote(app_exe)}\n"
+        "$ExtractDir = Join-Path $env:TEMP ('HorizonHaptics-' + [guid]::NewGuid().ToString('N'))\n"
+        "try {\n"
+        "  Start-Sleep -Seconds 3\n"
+        "  New-Item -ItemType Directory -Path $ExtractDir -Force | Out-Null\n"
+        "  Expand-Archive -LiteralPath $ZipPath -DestinationPath $ExtractDir -Force\n"
+        "  $SourceExe = Join-Path $ExtractDir 'HorizonHaptics-Bluetooth.exe'\n"
+        "  if (-not (Test-Path -LiteralPath $SourceExe)) { throw 'The update package does not contain the application EXE.' }\n"
+        "  $Copied = $false\n"
+        "  for ($i = 0; $i -lt 40; $i++) {\n"
+        "    try {\n"
+        "      Copy-Item -LiteralPath $SourceExe -Destination $AppExe -Force -ErrorAction Stop\n"
+        "      $Copied = $true\n"
+        "      break\n"
+        "    } catch { Start-Sleep -Milliseconds 500 }\n"
+        "  }\n"
+        "  if (-not $Copied) { throw 'Could not replace the application EXE.' }\n"
+        "  Start-Process -FilePath $AppExe -WorkingDirectory (Split-Path -Parent $AppExe)\n"
+        "} catch {\n"
+        "  Add-Content -LiteralPath (Join-Path $env:TEMP 'HorizonHaptics-update-error.log') -Value $_\n"
+        "} finally {\n"
+        "  Remove-Item -LiteralPath $ZipPath -Force -ErrorAction SilentlyContinue\n"
+        "  Remove-Item -LiteralPath $ExtractDir -Recurse -Force -ErrorAction SilentlyContinue\n"
+        "  Start-Sleep -Milliseconds 500\n"
+        "  Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue\n"
+        "}\n"
+    )
     helper.close()
 
-    launcher = str(_APP_DIR / ("run.bat" if sys.platform == "win32" else "run.sh"))
-    args = [sys.executable, helper.name, str(zip_path), str(_APP_DIR), launcher]
+    flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+    subprocess.Popen(
+        [
+            "powershell.exe",
+            "-NoLogo",
+            "-NoProfile",
+            "-WindowStyle",
+            "Hidden",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            helper.name,
+        ],
+        creationflags=flags,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        close_fds=True,
+    )
+    log.info("Portable update helper launched.")
 
-    if sys.platform == "win32":
-        flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
-        subprocess.Popen(args, creationflags=flags, close_fds=True)
-    else:
-        subprocess.Popen(args, start_new_session=True, close_fds=True)
 
-    log.info("Update helper launched - restarting.")
+def apply_and_restart(zip_path: Path) -> None:
+    """Launch the external updater; the caller should quit the application."""
+    if sys.platform == "win32" and _LOCAL_APP:
+        _apply_frozen_windows_update(zip_path)
+        return
+
+    log.warning("Automatic updates are available only in the Windows portable build.")
 
 
 def start_check(callback) -> None:
-    """Check for updates in background. callback(tag, url) called if update found."""
+    """Check for updates in the background and call callback(tag, URL)."""
     def _run():
         result = check_for_update()
         if result:
             callback(*result)
+
     threading.Thread(target=_run, daemon=True, name="hh-update-check").start()
